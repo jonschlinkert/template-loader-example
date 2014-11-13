@@ -1,0 +1,45 @@
+{
+  "name": "template-loader-example",
+  "description": "Load templates.",
+  "version": "0.1.0",
+  "homepage": "https://github.com/jonschlinkert/template-loader-example",
+  "author": {
+    "name": "Jon Schlinkert",
+    "url": "https://github.com/jonschlinkert"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/jonschlinkert/template-loader-example.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jonschlinkert/template-loader-example/issues"
+  },
+  "licenses": [
+    {
+      "type": "MIT",
+      "url": "https://github.com/jonschlinkert/template-loader-example/blob/master/LICENSE-MIT"
+    }
+  ],
+  "main": "index.js",
+  "engines": {
+    "node": ">=0.10.0"
+  },
+  "scripts": {
+    "test": "mocha -R spec"
+  },
+  "devDependencies": {
+    "arr": "^0.1.5",
+    "load-templates": "^0.4.6",
+    "mocha": "*",
+    "should": "*"
+  },
+  "keywords": [
+    "docs",
+    "documentation",
+    "generate",
+    "generator",
+    "markdown",
+    "templates",
+    "verb"
+  ]
+}
