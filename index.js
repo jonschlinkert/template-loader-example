@@ -4,6 +4,7 @@ var path = require('path');
 var util = require('util');
 var arr = require('arr');
 var slice = require('array-slice');
+var async = require('async');
 
 /**
  * Example application using load-templates
@@ -87,9 +88,9 @@ Engine.prototype.load = function () {
 Engine.prototype.create = function (type, plural, options) {
   this.cache[plural] = this.cache[plural] || {};
   options = options || {};
-  var async = options.async;
+  var isAsync = options.async;
   var fns = arr.filterType(arguments, 'function');
-  var loader = async ? this.loadAsync : this.loadSync;
+  var loader = isAsync ? this.loadAsync : this.loadSync;
 
   if (fns.length > 0) {
     loader = fns[0];
@@ -103,7 +104,7 @@ Engine.prototype.create = function (type, plural, options) {
   Engine.prototype[plural] = function (key, value, locals, options) {
     var self = this;
     var args = slice(arguments);
-    if (async) {
+    if (isAsync) {
       var cb = args.pop();
       if (typeof cb !== 'function') {
         throw new Error('Async loading requires a callback function.');
@@ -140,30 +141,28 @@ var engine = new Engine();
  * Load some seriously disorganized templates
  */
 
-function doneLoading (err) {
-  if (err) console.log('err', err);
-}
-
-engine.layout('layouts/*.txt', 'flflflfl', {name: 'Brian Woodward'}, doneLoading);
-engine.layout('layouts/*.txt', {name: 'Brian Woodward'}, doneLoading);
-engine.layout('test/fixtures/a.md', {a: 'b'}, doneLoading);
-engine.page('abc.md', 'This is content.', {name: 'Jon Schlinkert'}, doneLoading);
-engine.page('foo1.md', 'This is content', {name: 'Jon Schlinkert'}, doneLoading);
-engine.page(['test/fixtures/one/*.md'], {a: 'b'}, doneLoading);
-engine.page({'bar1.md': {path: 'a/b/c.md', name: 'Jon Schlinkert'}}, doneLoading);
-engine.page({'baz.md': {path: 'a/b/c.md', name: 'Jon Schlinkert'}}, {go: true}, doneLoading);
-engine.page({'test/fixtures/a.txt': {path: 'a.md', a: 'b'}}, doneLoading);
-engine.page({path: 'test/fixtures/three/a.md', foo: 'b'}, doneLoading);
-engine.pages('fixtures/two/*.md', {name: 'Brian Woodward'}, doneLoading);
-engine.pages('pages/a.md', 'This is content.', {name: 'Jon Schlinkert'}, doneLoading);
-engine.pages('test/fixtures/*.md', 'flflflfl', {name: 'Brian Woodward'}, doneLoading);
-engine.pages('test/fixtures/a.md', {foo: 'bar'}, doneLoading);
-engine.pages('test/fixtures/three/*.md', {name: 'Brian Woodward'}, doneLoading);
-engine.pages(['test/fixtures/a.txt'], {name: 'Brian Woodward'}, doneLoading);
-engine.partial({'foo/bar.md': {content: 'this is content.', data: {a: 'a'}}}, doneLoading);
-engine.partial({path: 'one/two.md', content: 'this is content.', data: {b: 'b'}}, doneLoading);
-
-setTimeout(function () {
-  console.log(util.inspect(engine, null, 10));
-}, 5000);
-console.log(util.inspect(engine, null, 10));
+async.series(
+  [
+    function (next) { engine.layout('layouts/*.txt', 'flflflfl', {name: 'Brian Woodward'}, next); },
+    function (next) { engine.layout('layouts/*.txt', {name: 'Brian Woodward'}, next); },
+    function (next) { engine.layout('test/fixtures/a.md', {a: 'b'}, next); },
+    function (next) { engine.page('abc.md', 'This is content.', {name: 'Jon Schlinkert'}, next); },
+    function (next) { engine.page('foo1.md', 'This is content', {name: 'Jon Schlinkert'}, next); },
+    function (next) { engine.page(['test/fixtures/one/*.md'], {a: 'b'}, next); },
+    function (next) { engine.page({'bar1.md': {path: 'a/b/c.md', name: 'Jon Schlinkert'}}, next); },
+    function (next) { engine.page({'baz.md': {path: 'a/b/c.md', name: 'Jon Schlinkert'}}, {go: true}, next); },
+    function (next) { engine.page({'test/fixtures/a.txt': {path: 'a.md', a: 'b'}}, next); },
+    function (next) { engine.page({path: 'test/fixtures/three/a.md', foo: 'b'}, next); },
+    function (next) { engine.pages('fixtures/two/*.md', {name: 'Brian Woodward'}, next); },
+    function (next) { engine.pages('pages/a.md', 'This is content.', {name: 'Jon Schlinkert'}, next); },
+    function (next) { engine.pages('test/fixtures/*.md', 'flflflfl', {name: 'Brian Woodward'}, next); },
+    function (next) { engine.pages('test/fixtures/a.md', {foo: 'bar'}, next); },
+    function (next) { engine.pages('test/fixtures/three/*.md', {name: 'Brian Woodward'}, next); },
+    function (next) { engine.pages(['test/fixtures/a.txt'], {name: 'Brian Woodward'}, next); },
+    function (next) { engine.partial({'foo/bar.md': {content: 'this is content.', data: {a: 'a'}}}, next); },
+    function (next) { engine.partial({path: 'one/two.md', content: 'this is content.', data: {b: 'b'}}, next); }
+  ],
+  function (err) {
+    if (err) console.log('err', err);
+    console.log(util.inspect(engine, null, 10));
+  });
