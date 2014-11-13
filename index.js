@@ -3,6 +3,7 @@
 var path = require('path');
 var util = require('util');
 var arr = require('arr');
+var slice = require('array-slice');
 
 /**
  * Example application using load-templates
@@ -26,9 +27,9 @@ function Engine(options) {
  */
 
 Engine.prototype.defaultTemplates = function () {
-  this.create('partial', 'partials');
-  this.create('layout', 'layouts');
-  this.create('page', 'pages');
+  this.create('partial', 'partials', { async: true });
+  this.create('layout', 'layouts', { async: true });
+  this.create('page', 'pages', { async: true });
 };
 
 /**
@@ -46,7 +47,19 @@ Engine.prototype.loadSync = function () {
  */
 
 Engine.prototype.loadAsync = function () {
-  // do async stuff
+  var Loader = require('load-templates');
+  var loader = new Loader(this.options);
+  var fns = arr.filterType(arguments, 'function');
+  if (fns.length > 0) {
+    var done = fns[0];
+    var args = slice(arguments);
+    args.pop();
+    setTimeout(function () {
+      done(null, loader.load.apply(loader, args));
+    }, 200);
+  } else {
+    throw new Error('Async loading requires a callback function.');
+  }
 };
 
 /**
@@ -71,10 +84,12 @@ Engine.prototype.load = function () {
  * @return {String}
  */
 
-Engine.prototype.create = function (type, plural) {
+Engine.prototype.create = function (type, plural, options) {
   this.cache[plural] = this.cache[plural] || {};
+  options = options || {};
+  var async = options.async;
   var fns = arr.filterType(arguments, 'function');
-  var loader = this.load;
+  var loader = async ? this.loadAsync : this.loadSync;
 
   if (fns.length > 0) {
     loader = fns[0];
@@ -82,11 +97,26 @@ Engine.prototype.create = function (type, plural) {
   }
 
   Engine.prototype[type] = function (key, value, locals, options) {
-    return this[plural](key, value, locals, options);
+    return this[plural].apply(this, arguments);
   };
 
   Engine.prototype[plural] = function (key, value, locals, options) {
-    extend(this.cache[plural], loader.apply(this, arguments));
+    var self = this;
+    var args = slice(arguments);
+    if (async) {
+      var cb = args.pop();
+      if (typeof cb !== 'function') {
+        throw new Error('Async loading requires a callback function.');
+      }
+      args.push(function (err, template) {
+        if (err) return cb(err);
+        extend(self.cache[plural], template);
+        cb(null, template);
+      });
+      loader.apply(this, args)
+      return this;
+    }
+    extend(this.cache[plural], loader.apply(this, args));
     return this;
   };
 
@@ -110,23 +140,30 @@ var engine = new Engine();
  * Load some seriously disorganized templates
  */
 
-engine.layout('layouts/*.txt', 'flflflfl', {name: 'Brian Woodward'});
-engine.layout('layouts/*.txt', {name: 'Brian Woodward'});
-engine.layout('test/fixtures/a.md', {a: 'b'});
-engine.page('abc.md', 'This is content.', {name: 'Jon Schlinkert'});
-engine.page('foo1.md', 'This is content', {name: 'Jon Schlinkert'});
-engine.page(['test/fixtures/one/*.md'], {a: 'b'});
-engine.page({'bar1.md': {path: 'a/b/c.md', name: 'Jon Schlinkert'}});
-engine.page({'baz.md': {path: 'a/b/c.md', name: 'Jon Schlinkert'}}, {go: true});
-engine.page({'test/fixtures/a.txt': {path: 'a.md', a: 'b'}});
-engine.page({path: 'test/fixtures/three/a.md', foo: 'b'});
-engine.pages('fixtures/two/*.md', {name: 'Brian Woodward'});
-engine.pages('pages/a.md', 'This is content.', {name: 'Jon Schlinkert'});
-engine.pages('test/fixtures/*.md', 'flflflfl', {name: 'Brian Woodward'});
-engine.pages('test/fixtures/a.md', {foo: 'bar'});
-engine.pages('test/fixtures/three/*.md', {name: 'Brian Woodward'});
-engine.pages(['test/fixtures/a.txt'], {name: 'Brian Woodward'});
-engine.partial({'foo/bar.md': {content: 'this is content.', data: {a: 'a'}}});
-engine.partial({path: 'one/two.md', content: 'this is content.', data: {b: 'b'}});
+function doneLoading (err) {
+  if (err) console.log('err', err);
+}
 
+engine.layout('layouts/*.txt', 'flflflfl', {name: 'Brian Woodward'}, doneLoading);
+engine.layout('layouts/*.txt', {name: 'Brian Woodward'}, doneLoading);
+engine.layout('test/fixtures/a.md', {a: 'b'}, doneLoading);
+engine.page('abc.md', 'This is content.', {name: 'Jon Schlinkert'}, doneLoading);
+engine.page('foo1.md', 'This is content', {name: 'Jon Schlinkert'}, doneLoading);
+engine.page(['test/fixtures/one/*.md'], {a: 'b'}, doneLoading);
+engine.page({'bar1.md': {path: 'a/b/c.md', name: 'Jon Schlinkert'}}, doneLoading);
+engine.page({'baz.md': {path: 'a/b/c.md', name: 'Jon Schlinkert'}}, {go: true}, doneLoading);
+engine.page({'test/fixtures/a.txt': {path: 'a.md', a: 'b'}}, doneLoading);
+engine.page({path: 'test/fixtures/three/a.md', foo: 'b'}, doneLoading);
+engine.pages('fixtures/two/*.md', {name: 'Brian Woodward'}, doneLoading);
+engine.pages('pages/a.md', 'This is content.', {name: 'Jon Schlinkert'}, doneLoading);
+engine.pages('test/fixtures/*.md', 'flflflfl', {name: 'Brian Woodward'}, doneLoading);
+engine.pages('test/fixtures/a.md', {foo: 'bar'}, doneLoading);
+engine.pages('test/fixtures/three/*.md', {name: 'Brian Woodward'}, doneLoading);
+engine.pages(['test/fixtures/a.txt'], {name: 'Brian Woodward'}, doneLoading);
+engine.partial({'foo/bar.md': {content: 'this is content.', data: {a: 'a'}}}, doneLoading);
+engine.partial({path: 'one/two.md', content: 'this is content.', data: {b: 'b'}}, doneLoading);
+
+setTimeout(function () {
+  console.log(util.inspect(engine, null, 10));
+}, 5000);
 console.log(util.inspect(engine, null, 10));
