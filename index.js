@@ -73,16 +73,23 @@ Engine.prototype.load = function () {
 
 Engine.prototype.create = function (type, plural) {
   this.cache[plural] = this.cache[plural] || {};
+  var fns = arr.filterType(arguments, 'function');
+  var loader = this.load;
+
+  if (fns.length > 0) {
+    loader = fns[0];
+    // a `done` callback would be fns[1];
+  }
 
   Engine.prototype[type] = function (key, value, locals, options) {
     return this[plural](key, value, locals, options);
   };
 
   Engine.prototype[plural] = function (key, value, locals, options) {
-    var files = this.load(key, value, locals, options);
-    extend(this.cache[plural], files);
+    extend(this.cache[plural], loader.apply(this, arguments));
     return this;
   };
+
   return this;
 };
 
