@@ -102,6 +102,14 @@ Engine.prototype.create = function (type, plural, options) {
   };
 
   Engine.prototype[plural] = function (key, value, locals, options) {
+    return handleLoader(loader, plural, isAsync).apply(this, arguments);
+  };
+
+  return this;
+};
+
+function handleLoader (loader, plural, isAsync) {
+  return function () {
     var self = this;
     var args = slice(arguments);
     if (isAsync) {
@@ -114,16 +122,13 @@ Engine.prototype.create = function (type, plural, options) {
         extend(self.cache[plural], template);
         cb(null, template);
       });
-      loader.apply(this, args)
-      return this;
+      loader.apply(self, args)
+      return self;
     }
-    extend(this.cache[plural], loader.apply(this, args));
-    return this;
+    extend(self.cache[plural], loader.apply(self, args));
+    return self;
   };
-
-  return this;
-};
-
+}
 
 function extend(a, b) {
   for (var key in b) {
