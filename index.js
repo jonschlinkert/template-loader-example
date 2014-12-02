@@ -1,10 +1,21 @@
 'use strict';
 
+var Loaders = require('loader-cache');
+var slice = require('array-slice');
+var typeOf = require('kind-of');
+var async = require('async');
 var path = require('path');
 var util = require('util');
 var arr = require('arr');
-var slice = require('array-slice');
-var async = require('async');
+
+var defaultLoaders = require('./loaders');
+
+function isType(type) {
+  return function (val) {
+    return typeOf(val) === type;
+  };
+}
+
 
 /**
  * Example application using load-templates
@@ -20,6 +31,7 @@ var async = require('async');
 function Engine(options) {
   this.options = options || {};
   this.cache = {};
+  this.loaders = new Loaders();
   this.defaultTemplates();
 }
 
@@ -29,62 +41,73 @@ function Engine(options) {
 
 Engine.prototype.defaultTemplates = function () {
   this.create('partial', 'partials', { promise: true });
+  this.create('include', 'includes', { stream: true });
   this.create('layout', 'layouts', { async: true });
   this.create('page', 'pages');
-};
-
-
-/**
- * Default loader for loading templates.
- */
-
-Engine.prototype.loadSync = function loadSync () {
-  var Loader = require('load-templates');
-  var loader = new Loader(this.options);
-  return loader.load.apply(loader, arguments);
-};
-
-/**
- * Default loader for loading templates.
- */
-
-Engine.prototype.loadAsync = function loadAsync () {
-  var Loader = require('load-templates');
-  var loader = new Loader(this.options);
-  var args = slice(arguments);
-  var done = args.pop();
-  setTimeout(function () {
-    done(null, loader.load.apply(loader, args));
-  }, 200);
-};
-
-/**
- * Default promise loader
- */
-
-Engine.prototype.loadPromise = function loadPromise () {
-  var Promise = require('bluebird');
-  var deferred = Promise.pending();
-  var Loader = require('load-templates');
-  var loader = new Loader(this.options);
-  var args = slice(arguments);
-  setTimeout(function () {
-    deferred.fulfill(loader.load.apply(loader, args));
-  }, 200);
-  return deferred.promise;
 };
 
 /**
  * Choose the loader for loading templates
  */
 
-Engine.prototype.load = function load () {
-  var fns = arr.filterType(arguments, 'function');
-  if (fns.length > 0) {
-    // use async loader
-    return this.loadAsync.apply(this, arguments);
+Engine.prototype.load = function load (plural, loaderType) {
+  var load = this.loaders.load;
+  switch (loaderType) {
+    case 'async': load = this.loaders.loadAsync; break;
+    case 'promise': load = this.loaders.loadPromise; break;
+    case 'stream': load = this.loaders.loadStream; break;
   }
-  return this.loadSync.apply(this, arguments);
+  var i = 0;
+  return function () {
+    var self = this;
+    var args = slice(arguments);
+    var idx = arr.firstIndex(args, isType('array'));
+    var fns = [];
+    if (idx !== -1) {
+      fns = args[idx];
+      args.splice(idx, 1);
+    }
+    var options = args.length > 1 ? arr.lastObject(args) || {} : {};
+    options.matchLoader = function (pattern, options, thisArg) {
+      var key = plural;
+      if (fns.length > 0) {
+        key = key + '_' + (++i);
+        fns.forEach(function (fn) { thisArg._register(key + '_local', fn, loaderType); });
+        thisArg._register(key, [plural, key + '_local'], loaderType);
+      }
+      return key;
+    }
+
+    var params = [];
+    params.push(args);
+    params.push(options);
+    switch (loaderType) {
+      case 'async':
+        var cb = args.pop();
+        params.push(function (err, template) {
+          if (err) return cb(err);
+          extend(self.cache[plural], template);
+          cb(null, template);
+        });
+        return load.apply(self.loaders, params);
+        break;
+
+      case 'promise':
+        return load.apply(self.loaders, params)
+          .then(extend.bind(extend, self.cache[plural]));
+        break;
+
+      case 'stream':
+        return load.apply(self.loaders, params)
+          .on('data', extend.bind(extend, self.cache[plural]));
+        break;
+
+      default:
+        extend(self.cache[plural], load.apply(self.loaders, params));
+        return self;
+        break;
+    }
+  };
 };
 
 
@@ -99,94 +122,31 @@ Engine.prototype.load = function load () {
 Engine.prototype.create = function (type, plural, options) {
   this.cache[plural] = this.cache[plural] || {};
   options = options || {};
-  var isAsync = options.async;
-  var isPromise = options.promise;
   var fns = arr.filterType(arguments, 'function');
-  var loader = isAsync ? this.loadAsync : this.loadSync;
-  loader = isPromise ? this.loadPromise : loader;
-  var done = function (err, templates) {
-    if (err) throw err;
-    return templates;
-  };
+  var loaderType = 'sync';
 
-  if (fns.length > 0) {
-    loader = fns[0];
-    done = fns[1] || done;
+  if      (options.async)   loaderType = 'async';
+  else if (options.promise) loaderType = 'promise';
+  else if (options.stream)  loaderType = 'stream';
+  else                      loaderType = 'sync';
+
+  if (fns.length === 0) {
+    fns.push(defaultLoaders[loaderType]);
   }
+
+  fns.forEach(function (fn) { this.loaders._register(plural, fn, loaderType); }, this);
+  var load = this.load(plural, loaderType);
 
   Engine.prototype[type] = function (key, value, locals, options) {
     return this[plural].apply(this, arguments);
   };
 
   Engine.prototype[plural] = function (key, value, locals, options) {
-    return handleLoader(loader, plural, isAsync, isPromise, done).apply(this, arguments);
+    return load.apply(this, arguments);
   };
 
   return this;
 };
-
-function handleLoader (loader, plural, isAsync, isPromise, done) {
-  return function () {
-    var self = this;
-    var args = slice(arguments);
-    var options = arr.last(args, 'object');
-    var fns = arr.filterType(args, 'function');
-    if (options.async) {
-      isAsync = options.async;
-      loader = this.loadAsync;
-    }
-    if (options.promise) {
-      isPromise = options.promise;
-      loader = this.loadPromise;
-    }
-
-
-    if (isAsync) {
-      switch (fns.length) {
-        case 0: throw new Error('Expeced a callback function.');
-        case 1: done = fns[0]; break;
-        case 2:
-          loader = fns[0];
-          done = fns[1];
-      }
-      loader = callbackify(loader, function (cb) {
-        return function (err, template) {
-          if (err) return cb(err);
-          extend(self.cache[plural], template);
-          cb(null, template);
-        };
-      });
-      loader.apply(self, args);
-      return self;
-    }
-
-
-    if (isPromise) {
-      return loader.apply(self, args)
-        .then(function (templates) {
-          extend(self.cache[plural], templates);
-        });
-    }
-
-    
-    var templates = loader.apply(self, args);
-    extend(self.cache[plural], templates);
-    return self;
-  };
-}
-
-function callbackify (fn, done) {
-  return function () {
-    var args = slice(arguments);
-    var cb = args.pop();
-    if (typeof cb !== 'function') {
-      args.push(cb);
-      cb = function () {};
-    }
-    args.push(done(cb));
-    fn.apply(this, args);
-  };
-}
 
 function extend(a, b) {
   for (var key in b) {
@@ -200,54 +160,83 @@ function extend(a, b) {
 
 var engine = new Engine();
 
-var demoLoadSync = function () {
-  var template = this;
-  return template.loadSync.apply(template, arguments);
-};
-
-var demoLoadAsync = function () {
-  var template = this;
-  template.loadAsync.apply(template, arguments);
-};
-
-var demoLoadPromise = function () {
-  var template = this;
-  return template.loadPromise.apply(template, arguments);
-};
-
+console.log('engine', engine);
+console.log();
 /**
  * Load some seriously disorganized templates
  */
 
-async.series(
-  [
-    // layouts are async
-    function (next) { engine.layout('layouts/*.txt', 'flflflfl', {name: 'Brian Woodward'}, next); },
-    function (next) { engine.layout('layouts/*.txt', {name: 'Brian Woodward'}, demoLoadAsync, next); },
-    function (next) { engine.layout('test/fixtures/a.md', {a: 'b'}, next); },
+engine.page('abc.md', 'This is content.', {name: 'Jon Schlinkert'}, [function demoSync (template) {
+  console.log('page template', template);
+  return template;
+}]);
+console.log('pages', engine.cache.pages);
+console.log();
 
-    // pages are sync
-    function (next) { engine.page('abc.md', 'This is content.', {name: 'Jon Schlinkert'}); next(); },
-    function (next) { engine.page('foo1.md', 'This is content', {name: 'Jon Schlinkert'}); next(); },
-    function (next) { engine.page(['test/fixtures/one/*.md'], {a: 'b'}, demoLoadSync); next(); },
-    function (next) { engine.page({'bar1.md': {path: 'a/b/c.md', name: 'Jon Schlinkert'}}); next(); },
-    function (next) { engine.page({'baz.md': {path: 'a/b/c.md', name: 'Jon Schlinkert'}}, {go: true}); next(); },
-    function (next) { engine.page({'test/fixtures/a.txt': {path: 'a.md', a: 'b'}}); next(); },
-    // load a couple pages with async
-    function (next) { engine.page({path: 'test/fixtures/three/a.md', foo: 'b'}, {async: true}, demoLoadAsync, next); },
-    function (next) { engine.pages('fixtures/two/*.md', {name: 'Brian Woodward'}, {async: true}, next); },
-    function (next) { engine.pages('pages/a.md', 'This is content.', {name: 'Jon Schlinkert'}); next(); },
-    // load a some pages with promises
-    function (next) { engine.pages('test/fixtures/*.md', 'flflflfl', {name: 'Brian Woodward'}, {promise: true}).then(next); },
-    function (next) { engine.pages('test/fixtures/a.md', {foo: 'bar'}, {promise: true}, demoLoadPromise).then(next); },
-    function (next) { engine.pages('test/fixtures/three/*.md', {name: 'Brian Woodward'}, {promise: true}).then(next); },
-    function (next) { engine.pages(['test/fixtures/a.txt'], {name: 'Brian Woodward'}); next(); },
+engine.layout('test/fixtures/a.md', {a: 'b'}, [function demoAsync (template, options, next) {
+  if (typeof options === 'function') {
+    next = options;
+    options = {};
+  }
+  console.log('layout template', template);
+  next(null, template);
+}], function (err, results) {
+  console.log('layouts', engine.cache.layouts);
+  console.log();
+});
 
-    // partials are promises
-    function (next) { engine.partial({'foo/bar.md': {content: 'this is content.', data: {a: 'a'}}}).then(next); },
-    function (next) { engine.partial({path: 'one/two.md', content: 'this is content.', data: {b: 'b'}}, demoLoadPromise).then(next); }
-  ],
-  function (err) {
-    if (err) console.log('err', err);
-    console.log(util.inspect(engine, null, 10));
+engine.partial({'foo/bar.md': {content: 'this is content.', data: {a: 'a'}}}, [function demoPromise (template) {
+  console.log('partial template', template);
+  var Promise = require('bluebird');
+  var deferred = Promise.pending();
+  setTimeout(function () {
+    deferred.fulfill(template);
+  }, 200);
+  return deferred.promise;
+}]).then(function (err, results) {
+  console.log('partials', engine.cache.partials);
+  console.log();
+});
+
+var through = require('through2');
+engine.include({path: 'one/two.md', content: 'this is content.', data: {b: 'b'}}, [through.obj(function demoStream (template) {
+  console.log('include template', template);
+  this.emit('data', template);
+})])
+  .on('data', function () {
+    console.log('includes', engine.cache.includes);
+    console.log();
   });
+
+// async.series(
+//   [
+//     // layouts are async
+//     function (next) { engine.layout('layouts/*.txt', 'flflflfl', {name: 'Brian Woodward'}, next); },
+//     function (next) { engine.layout('layouts/*.txt', {name: 'Brian Woodward'}, demoLoadAsync, next); },
+//     function (next) { engine.layout('test/fixtures/a.md', {a: 'b'}, next); },
+
+//     // pages are sync
+//     function (next) { engine.page('abc.md', 'This is content.', {name: 'Jon Schlinkert'}); next(); },
+//     function (next) { engine.page('foo1.md', 'This is content', {name: 'Jon Schlinkert'}); next(); },
+//     function (next) { engine.page(['test/fixtures/one/*.md'], {a: 'b'}, demoLoadSync); next(); },
+//     function (next) { engine.page({'bar1.md': {path: 'a/b/c.md', name: 'Jon Schlinkert'}}); next(); },
+//     function (next) { engine.page({'baz.md': {path: 'a/b/c.md', name: 'Jon Schlinkert'}}, {go: true}); next(); },
+//     function (next) { engine.page({'test/fixtures/a.txt': {path: 'a.md', a: 'b'}}); next(); },
+//     // load a couple pages with async
+//     function (next) { engine.page({path: 'test/fixtures/three/a.md', foo: 'b'}, {async: true}, demoLoadAsync, next); },
+//     function (next) { engine.pages('fixtures/two/*.md', {name: 'Brian Woodward'}, {async: true}, next); },
+//     function (next) { engine.pages('pages/a.md', 'This is content.', {name: 'Jon Schlinkert'}); next(); },
+//     // load a some pages with promises
+//     function (next) { engine.pages('test/fixtures/*.md', 'flflflfl', {name: 'Brian Woodward'}, {promise: true}).then(next); },
+//     function (next) { engine.pages('test/fixtures/a.md', {foo: 'bar'}, {promise: true}, demoLoadPromise).then(next); },
+//     function (next) { engine.pages('test/fixtures/three/*.md', {name: 'Brian Woodward'}, {promise: true}).then(next); },
+//     function (next) { engine.pages(['test/fixtures/a.txt'], {name: 'Brian Woodward'}); next(); },
+
+//     // partials are promises
+//     function (next) { engine.partial({'foo/bar.md': {content: 'this is content.', data: {a: 'a'}}}).then(next); },
+//     function (next) { engine.partial({path: 'one/two.md', content: 'this is content.', data: {b: 'b'}}, demoLoadPromise).then(next); }
+//   ],
+//   function (err) {
+//     if (err) console.log('err', err);
+//     console.log(util.inspect(engine, null, 10));
+//   });
