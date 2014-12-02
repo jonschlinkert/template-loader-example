@@ -74,23 +74,23 @@ console.log();
  * Load some seriously disorganized templates
  */
 
-engine.page(engine.load(['abc.md', 'This is content.', {name: 'Jon Schlinkert'}], options));
+engine.page(engine.load(['abc.md', 'This is content.', {name: 'Jon Schlinkert'}], options, ['demoSync']));
 console.log('pages', engine.cache.pages);
 console.log();
 
-engine.loadAsync(['test/fixtures/a.md', {a: 'b'}], options, function (err, layouts) {
+engine.loadAsync(['test/fixtures/a.md', {a: 'b'}], options, ['demoAsync'], function (err, layouts) {
   engine.layouts(layouts);
   console.log('layouts', engine.cache.layouts);
   console.log();
 });
 
-engine.loadPromise(['foo/bar.md', {content: 'this is content.', data: {a: 'a'}}], options).then(function (partials) {
+engine.loadPromise(['foo/bar.md', {content: 'this is content.', data: {a: 'a'}}], options, ['demoPromise']).then(function (partials) {
   engine.partials(partials);
   console.log('partials', engine.cache.partials);
   console.log();
 });
 
-engine.loadStream(['one/two.md', {path: 'one/two.md', content: 'this is content.', data: {b: 'b'}}], options)
+engine.loadStream(['one/two.md', {path: 'one/two.md', content: 'this is content.', data: {b: 'b'}}], options, ['demoStream'])
   .on('data', function (includes) {
     engine.includes(includes);
     console.log('includes', engine.cache.includes);
