@@ -25,7 +25,9 @@ module.exports.loader = function loader (key, options, fn) {
     fn = options;
     options = {};
   }
-  this.loaders._register(key, fn, getTypes(options));
+  getTypes(options).forEach(function (type) {
+    this.loaders._register(key, fn, type);
+  }, this);
 };
 
 /**
