@@ -30,10 +30,10 @@ module.exports.loader = function loader (key, options, fn) {
     fn = options;
     options = {};
   }
-  if (options.isAsync) this.loaders.registerAsync(key, fn);
-  if (options.isPromise) this.loaders.registerPromise(key, fn);
-  if (options.isStream) this.loaders.registerStream(key, fn);
-  if (!options.isAsync && !options.isPromise && !options.isStream) this.loaders.register(key, fn);
+  if (!options.isAsync && !options.isPromise && !options.isStream) {
+    options.isSync = true;
+  }
+  this.loaders._register(key, fn, options);
 };
 
 /**

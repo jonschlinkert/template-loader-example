@@ -28,10 +28,7 @@ engine.loader('default', { isPromise: true }, defaultLoaders.promise);
 engine.loader('default', { isStream: true }, defaultLoaders.stream);
 
 // use the default loader for `.md` files
-engine.loader('.md', ['default']);
-engine.loader('.md', { isAsync: true }, ['default']);
-engine.loader('.md', { isPromise: true }, ['default']);
-engine.loader('.md', { isStream: true }, ['default']);
+engine.loader('.md', { isSync: true, isAsync: true, isPromise: true, isStream: true }, ['default']);
 
 // demo loaders to use after the default loader
 engine.loader('demoSync', function demoSync (template) {
