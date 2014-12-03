@@ -8,32 +8,24 @@ function isType(type) {
   };
 }
 
-// function matchLoader(loaders, type) {
-//   var self = this;
-//   return function (pattern, options, thisArg) {
-//     if (typeOf(pattern) === 'array') pattern = pattern[0];
-//     if (loaders && loaders.length > 0) {
-//       var key = thisArg.matchLoader(pattern);
-//       if (thisArg.cache[type][key]) {
-//         loaders.unshift(key);
-//       }
-//       key += ' - ' + (++self._loadCount);
-//       thisArg._register(key, loaders, type);
-//       return key;
-//     }
-//     return thisArg.matchLoader(pattern);
-//   };
-// }
+function getTypes(options) {
+  if (!options.isAsync && !options.isPromise && !options.isStream) {
+    options.isSync = true;
+  }
+  var types = [];
+  if (options.isSync) types.push('sync');
+  if (options.isAsync) types.push('async');
+  if (options.isPromise) types.push('promise');
+  if (options.isStream) types.push('stream');
+  return types;
+}
 
 module.exports.loader = function loader (key, options, fn) {
   if (typeOf(options) === 'function' || typeOf(options) === 'array') {
     fn = options;
     options = {};
   }
-  if (!options.isAsync && !options.isPromise && !options.isStream) {
-    options.isSync = true;
-  }
-  this.loaders._register(key, fn, options);
+  this.loaders._register(key, fn, getTypes(options));
 };
 
 /**

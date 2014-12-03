@@ -33,7 +33,7 @@
     "bluebird": "^2.3.11",
     "kind-of": "^0.1.2",
     "load-templates": "^0.4.6",
-    "loader-cache": "^0.2.0",
+    "loader-cache": "git://github.com/jonschlinkert/loader-cache",
     "mocha": "*",
     "should": "*"
   },
